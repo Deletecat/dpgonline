@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>dpgonline</title>
+        <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    </head>
+    <body>
+        <h1>DPG Converter Online</h1>
+        <form action="/convert" method="POST" enctype="multipart/form-data">
+            <input type="file" name="file" accept="video/*" required>
+            <input type="checkbox" name="aspect">
+            <input type="number" name="width" value="256" min="1" max="256">
+            <input type="number" name="height" value="192" min="1" max="192">
+            <input type="number" name="fps" value="15" min="1" max="60">
+            <select name="dpg" required>
+                <option value="4" selected>4</option>
+                <option value="3">3</option>
+                <option value="2">2</option>
+                <option value="1">1</option>
+                <option value="0">0</option>
+            </select>
+            <select name="quality" required>
+                <option value="high">High</option>
+                <option value="normal" selected>Normal</option>
+                <option value="low">Low</option>
+            </select>
+            <input type="submit" name="upload_file" value="Upload and convert!">
+        </form>
+    </body>
+</html>
