@@ -18,10 +18,10 @@ REQUIREMENTS:
 
 You can run dpgonline using the command line below:
 
-SANIC_REQUEST_MAX_SIZE=5000000000 sanic server
+SANIC_REQUEST_MAX_SIZE=500000000 sanic server
 
 You can change the request size value to match the maximum file size
-you will permit. The above example is 5GB.
+you will permit. The above example is 500MB.
 
 Enjoy :)
 
