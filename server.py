@@ -120,7 +120,7 @@ async def upload_and_verify(request):
         raise SilentError("Invalid input detected. Please try again.", status_code=400)
 
     # set output filename
-    dpg_options.output = "./downloads/" + date_time + ".dpg"
+    dpg_options.output = "./downloads/" + app.ctx.current_id + ".dpg"
 
     # add cookie to log user's video
     queue_obj = QueueObj(app.ctx.current_id,input_filename,dpg_options)
