@@ -27,8 +27,7 @@ import struct
 import re
 
 class DPGOpts():
-    def __init__(self, quality, fps, dpg, width, height, keep_aspect):
-        self.quality = quality
+    def __init__(self, fps, dpg, width, height, keep_aspect):
         self.fps = fps
         self.dpg = dpg
         self.width = width
@@ -39,9 +38,6 @@ class DPGOpts():
     def verify_inputs(self):
         valid = True # assume valid
 
-        # valid input lists
-        valid_quality_settings = ["low","normal","high"]
-
         # check integer inputs are integers
         try:
             self.fps = int(self.fps)
@@ -51,9 +47,7 @@ class DPGOpts():
         except:
             valid = False
         else:
-            if self.quality not in valid_quality_settings:
-                valid = False
-            elif self.fps <= 0 or self.fps > 60:
+            if self.fps <= 0 or self.fps > 24:
                 valid = False
             elif self.dpg < 0 or self.dpg > 4:
                 valid = False
@@ -67,21 +61,21 @@ class DPGOpts():
         return valid
 
 async def convert_video(options,file,mpeg_1_temp):
-    # get video data using mplayer
-    get_video_data = await asyncio.create_subprocess_exec("mplayer", "-frames", "1", "-vo", "null", "-ao", "null", "-identify", "-nolirc", file,
+    # get video data using ffprobe
+    get_video_data = await asyncio.create_subprocess_exec("ffprobe", "-show_streams", file,
                                                         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
     # wait for process to complete and get output
     video_data = await get_video_data.communicate()
-    frames = float(re.compile("ID_VIDEO_FPS=(.*)").search(video_data[0].decode("utf-8")).group(1)) # find number of frames in the video
+    frames = int(re.compile("avg_frame_rate=(.*)").search(video_data[0].decode("utf-8")).group(1).split("/")[0]) # find frame rate of the video
 
     # prevent user error if set fps is bigger than video fps
     if frames < options.fps:
         options.fps = frames
 
     if options.keep_aspect == "on":
-        # mplayer's video aspect ID doesn't always work so it's best to calculate it
-        width = float(re.compile("ID_VIDEO_WIDTH=(.*)").search(video_data[0].decode("utf-8")).group(1))
-        height = float(re.compile("ID_VIDEO_HEIGHT=(.*)").search(video_data[0].decode("utf-8")).group(1))
+        # calculate aspect ratio
+        width = float(re.compile("width=(.*)").search(video_data[0].decode("utf-8")).group(1))
+        height = float(re.compile("height=(.*)").search(video_data[0].decode("utf-8")).group(1))
         aspect_ratio = width/height
 
         if int(256.0/aspect_ratio) <= 192:
@@ -90,76 +84,54 @@ async def convert_video(options,file,mpeg_1_temp):
         else:
             options.height=192
             options.width=int(aspect_ratio*192.0)
-    else:
-        # use two ifs just in case both values are bigger than DS screen
-        if options.width > 256:
-            options.width = 256
-        if options.height > 192:
-            options.height = 192
+    pad_width = int((256-options.width)/2)
+    pad_height = int((192-options.height)/2)
 
-    if options.quality == "high":
-        # transcode video with high quality settings
-        proc = await asyncio.create_subprocess_exec("mencoder", file, "-v", "-ofps", str(options.fps), "-sws", "9", "-vf",
-                                             f"scale={options.width}:{options.height}:::3,expand=256:192,harddup", "-nosound", "-ovc", "lavc", "-lavcopts",
-                                             f"vcodec=mpeg1video:vstrict=-2:mbd=2:trell:o=mpv_flags=+mv0:keyint=10:cmp=6:subcmp=6:precmp=6:dia=3:predia=3:last_pred=3:vbitrate=256",
-                                             "-o", mpeg_1_temp.name, "-of", "rawvideo", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
-        # wait for transcoding to complete
-        out = await proc.communicate()
+    proc = await asyncio.create_subprocess_exec("ffmpeg","-y","-i",file,"-f","data","-map","0:v:0","-r",str(options.fps),
+                                                "-sws_flags","lanczos","-vf",f"scale={options.width}:{options.height},pad=256:192:{pad_width}:{pad_height}",
+                                                "-codec:v","mpeg1video","-strict","experimental","-mbd","2",
+                                                "-trellis","1","-mpv_flags","+cbp_rd","-mpv_flags","+mv0","-g","11",
+                                                "-cmp","6","-subcmp","6","-precmp","6", "-dia_size","3","-pre_dia_size","3","-last_pred","3", mpeg_1_temp.name,
+                                                stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.DEVNULL)
 
-    elif options.quality == "low":
-        # transcode video with low quality settings
-        proc = await asyncio.create_subprocess_exec("mencoder", file, "-v", "-ofps", str(options.fps), "-vf",
-                                             f"scale={options.width}:{options.height},expand=256:192,harddup", "-nosound", "-ovc", "lavc", "-lavcopts",
-                                             f"vcodec=mpeg1video:vstrict=-2:keyint=10:vbitrate=256", "-o", mpeg_1_temp.name, "-of",
-                                             "rawvideo", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
-        # wait for transcoding to complete
-        out = await proc.communicate()
-
-    else:
-        # transcode video with normal quality settings
-        proc = await asyncio.create_subprocess_exec("mencoder", file, "-v", "-ofps", str(options.fps), "-sws", "9", "-vf",
-                                             f"scale={options.width}:{options.height}:::3,expand=256:192,harddup", "-nosound", "-ovc", "lavc", "-lavcopts",
-                                             f"vcodec=mpeg1video:vstrict=-2:keyint=10:mbd=2:trell:o=mpv_flags=+mv0:cmp=2:subcmp=2:precmp=2:vbitrate=256",
-                                             "-o", mpeg_1_temp.name, "-of", "rawvideo", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
-        # wait for transcoding to complete
-        out = await proc.communicate()
+    out = await proc.communicate()
 
 async def convert_audio(options,file,mpeg_2_temp):
-    # get audio data using mplayer
-    get_audio_data = await asyncio.create_subprocess_exec("mplayer", "-frames", "0", "-vo", "null", "-ao", "null", "nolirc", "-identify", file,
+    # get audio data
+    get_audio_data = await asyncio.create_subprocess_exec("ffprobe", "-show_streams", file,
                                                         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
     # wait for process to complete and get output
     audio_data = await get_audio_data.communicate()
 
-    # check to see if there are any audio channels - indicates audio stream
-    channels = re.compile("([0-9]*)( ch)").search(audio_data[0].decode("utf-8"))
+    # check to see if there are any audio streams
+    channels = re.compile("channels=(.*)").search(audio_data[0].decode("utf-8"))
 
     if channels:
-        # if there is an audio stream, store the number of channels
+        # store the number of channels
         no_channels = int(channels.group(1))
 
         if no_channels >= 2 and options.dpg != 0:
             # run mencoder with twolame to get stereo, 2 channel audio
-            proc = await asyncio.create_subprocess_exec("mencoder",file,"-v","-of","rawaudio","-oac","twolame","-ovc","copy","-twolameopts","br=128:mode=stereo",
-                                                            "-o", mpeg_2_temp.name, "-af", "channels=2,resample=32000:1:2",
+            proc = await asyncio.create_subprocess_exec("ffmpeg","-y","-i",file,"-f","data","-map","0:a:0","-codec:a","libtwolame","-ar","32000",
+                                                        "-b:a","128k","-mode","stereo","-ac","2",mpeg_2_temp.name,
                                                         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
             # wait for process to complete
             out = await proc.communicate()
         else:
             # run mencoder with twolame to get mono, 1 channel audio
-            proc = await asyncio.create_subprocess_exec("mencoder",file,"-v","-of","rawaudio","-oac","twolame","-ovc","copy","-twolameopts","br=128:mode=mono",
-                                                            "-o", mpeg_2_temp.name, "-af", "channels=1,resample=32000:1:2",
+            proc = await asyncio.create_subprocess_exec("ffmpeg","-y","-i",file,"-f","data","-map","0:a:0","-codec:a","libtwolame","-ar","32000",
+                                                        "-b:a","128k","-mode","mono","-ac","1",mpeg_2_temp.name,
                                                         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
             # wait for process to complete
             out = await proc.communicate()
     else:
-        # This condition will only be true if the video does not have an audio stream, or if mplayer errors out for some other reason.
+        # This condition will only be true if the video does not have an audio stream.
         # Having no audio stream will crash Moonshell as it's expecting something that doesn't exist
-        vid_length = re.compile("ID_LENGTH=([0-9]*.[0-9]*)").search(audio_data[0].decode("utf-8")) # ID_LENGTH corresponds to the video length in seconds
+        vid_length = re.compile("duration=([0-9]*.[0-9]*)").search(audio_data[0].decode("utf-8"))
         if vid_length:
             seconds = float(vid_length.group(1))
-            # use sox with the mp3 libsox format to generate a silent mp2 file
-            proc = await asyncio.create_subprocess_exec("sox", "-n", "-r", "32000", "-c", "1", mpeg_2_temp.name, "trim", "0.0", str(seconds),
+            proc = await asyncio.create_subprocess_exec("ffmpeg","-y","-f","lavfi","-i","anullsrc","-t",str(seconds),"-map","0:a:0","-codec:a","libtwolame",
+                                                        "-b:a","128k","-mode","mono","-ac","1","-ar","32000",mpeg_2_temp.name,
                                                         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
             out = await proc.communicate()
         else:
@@ -167,68 +139,48 @@ async def convert_audio(options,file,mpeg_2_temp):
 
 async def calculate_gop(options,file,mpeg_1_temp,gop_temp):
     """
-    from mpeg_stat source and mpeg header reference:
-        - picture start code: 0x00000100
-        - sequence start code: 0x000001b3
-        - GOP start code: 0x000001b8
-    For every sequence, there's 10 pictures, due to the keyframe interval used during the transcoding stage being 10 frames.
-    If the keyframe interval is tweaked, the for loop will have to be tweaked as well.
-    These pictures continue to the end of the file, so if there's less than 10 pictures in a sequence (or no sequence after 10 pictures), we've reached EOF.
-    Despite the GOP start code being a thing, DPG2+ doesn't seem to use it?
+    This is derived from dpgv4's gop calculation using ffprobe.
+    All credits go to Pawel Slowik for this method!
     """
-    picture_start_code = b'\x00\x00\x01\x00'
-    sequence_start_code = b'\x00\x00\x01\xb3'
-    last_index = 0
     frames = 0
 
-    async with aiofiles.open(mpeg_1_temp.name, "rb") as reader:
-        # DPG2+ uses GOP for faster seeking
+    temp_gop_output = await aiofiles.tempfile.NamedTemporaryFile()
+    # get ffprobe data and store it to a file
+    async with aiofiles.open(temp_gop_output.name,"w") as writer:
+        proc = await asyncio.create_subprocess_exec("ffprobe","-hide_banner","-print_format","csv","-show_frames","-select_streams","v",mpeg_1_temp.name,stdout=writer,stderr=asyncio.subprocess.DEVNULL)
+        out = await proc.communicate()
+
+    async with aiofiles.open(temp_gop_output.name,"r") as reader:
         if options.dpg >= 2:
             gop = await aiofiles.open(gop_temp.name,"wb")
-
-        # use mmap so we don't have to read chunks of the video in
-        file_mmap = mmap.mmap(reader.fileno(),0,access=mmap.ACCESS_READ)
-
-        # loop until end of file reached
         while True:
-            # check for the start of a sequence - returns -1 if EOF
-            last_index = file_mmap.find(sequence_start_code,last_index)
-            if(last_index == -1):
-                break	# EOF
-            elif options.dpg >= 2:
-                # write info required for GOP if DPG2 or above
-                await gop.write(struct.pack("<l",frames))
-                await gop.write(struct.pack("<l",last_index))
-            # increment last index so as to not find the same start code again
-            last_index += 1
-
-            # loop 10 times for each picture
-            for i in range(10):
-                # check if next picture exists - returns -1 if EOF
-                last_index = file_mmap.find(picture_start_code,last_index)
-                if(last_index == -1):
-                    break	# EOF
-                # increment frame counter and last index
+            line = await reader.readline()
+            if line == "":
+                break
+            data = line.split(",")
+            if data[0] != "frame":
+                continue
+            else:
+                if options.dpg >= 2 and data[22] == "I":
+                    await gop.write(struct.pack("<l",frames))
+                    await gop.write(struct.pack("<l",int(data[12])))
                 frames += 1
-                last_index += 1
 
-        # we need to close the GOP file manually
         if options.dpg >= 2:
             await gop.close()
-
     return frames
 
 async def create_thumbnail(options,frames,thumb_temp,mpeg_1_temp):
     # create temp dir to store image in
     temp_dir = await aiofiles.tempfile.TemporaryDirectory()
-    orig_thumb_file = temp_dir.name + "/00000001.png" # mplayer outputs the frame shot as 00000001.png
+    orig_thumb_file = temp_dir.name + "/00000001.png"
 
     # save a frame from the video as an image
-    proc = await asyncio.create_subprocess_exec("mplayer", mpeg_1_temp.name, "-nosound", "-vo", f"png:outdir={temp_dir.name}", "-frames", "1", "-ss", f"{int((int(frames)/options.fps)/10)}",
+    proc = await asyncio.create_subprocess_exec("ffmpeg","-ss",f"{int((int(frames)/options.fps)/10)}","-i",mpeg_1_temp.name,"-frames","1",orig_thumb_file,
                                                 stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.DEVNULL)
 
     # wait for the process to complete
-    out = await proc.communicate()
+    await proc.wait()
 
     # original dpgconv thumbnail processing code
     im = Image.open(orig_thumb_file)
@@ -283,7 +235,7 @@ async def write_header(options,tempfiles,frames):
     videostart = audiostart + audiosize
     videoend = videostart + videosize
 
-    pixel_format = 3
+    pixel_format = 3    # "RGB24" - doesn't change anything really
     DPG = f"DPG{options.dpg}".encode("utf-8")
 
     headerValues = [ DPG, int(frames), options.fps, 0, 32000 , 0 ,int(audiostart), int(audiosize), int(videostart), int(videosize) ]
@@ -308,8 +260,8 @@ async def write_header(options,tempfiles,frames):
             await f.write(struct.pack("<l", videoend))
             await f.write(struct.pack("<l", gopsize))
 
-        if options.dpg != 1:
-            # this must be added in dpg versions besides 1 for some reason
+        if options.dpg != 0:
+            # this must be added in dpg versions besides 0
             await f.write(struct.pack("<l", pixel_format))
 
         if options.dpg == 4:

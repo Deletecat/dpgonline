@@ -24,6 +24,7 @@ Copyright (C) 2025 Deletecat
                 font-family: sans-serif;
                 background-color:#C3B1E1;
                 padding:10px;
+                max-width: 600px;
             }
             h1{
                 margin-top:0px;
@@ -46,7 +47,7 @@ Copyright (C) 2025 Deletecat
             x
             <input type="number" name="height" value="192" min="1" max="192">*<br/>
             <label for="fps">FPS:</label>
-            <input type="number" name="fps" value="15" min="1" max="60"><br/>
+            <input type="number" name="fps" value="24" min="1" max="24"><br/>
             <label for="dpg">DPG:</label>
             <select name="dpg" required>
                 <option value="4" selected>4</option>
@@ -54,15 +55,11 @@ Copyright (C) 2025 Deletecat
                 <option value="2">2</option>
                 <option value="1">1</option>
                 <option value="0">0</option>
-            </select><br/>
-            <label for="quality">Quality:</label>
-            <select name="quality" required>
-                <option value="high">High</option>
-                <option value="normal" selected>Normal</option>
-                <option value="low">Low</option>
             </select><br/><br/>
             <input type="submit" name="upload_file" value="Upload and convert!">
         </form>
         <p>*When "Keep Aspect Ratio" is enabled, the width and height values are ignored.</p>
+        <hr>
+        <sup>dpgonline - v0.1-alpha1</sup>
     </body>
 </html>
