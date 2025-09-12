@@ -125,7 +125,7 @@ async def last_ping_cleanup(app):
 ### background encoding tasks
 async def start_encoding(app):
     await encoder.encode(app.ctx.dpg_converting.dpg_opts, app.ctx.dpg_converting.input_filename)
-    app.ctx.dpg_converting.expiry_time = int(datetime.timestamp(datetime.now())) + 3600 # downloads expire every half hour
+    app.ctx.dpg_converting.expiry_time = int(datetime.timestamp(datetime.now())) + 1800 # downloads expire every half hour
     app.ctx.dpg_downloadable.append(app.ctx.dpg_converting)
     await aiofiles.os.remove(app.ctx.dpg_converting.input_filename)
 
