@@ -35,13 +35,14 @@ class SilentError(SanicException):
     quiet = True
 
 class QueueObj():
-    def __init__(self, id, ifn, dpgopts, lp):
+    def __init__(self, id, ifn, dpgopts, lp, ip):
         self.id = id
         self.input_filename = ifn
         self.dpg_opts = dpgopts
         self.started = False # used to track the start of a job
         self.expiry_time = 0 # to be set once converted
         self.last_ping = lp # set once added to queue, used to make sure user is still in the queue/converting
+        self.request_ip = ip # limit object to user IP
 
 @app.before_server_start
 async def init_server(app,loop):
@@ -126,6 +127,7 @@ async def start_encoding(app):
     await encoder.encode(app.ctx.dpg_converting.dpg_opts, app.ctx.dpg_converting.input_filename)
     app.ctx.dpg_converting.expiry_time = int(datetime.timestamp(datetime.now())) + 3600 # downloads expire every half hour
     app.ctx.dpg_downloadable.append(app.ctx.dpg_converting)
+    await aiofiles.os.remove(app.ctx.dpg_converting.input_filename)
 
     if len(app.ctx.dpg_queue) > 0:
         app.ctx.dpg_converting = app.ctx.dpg_queue[0]
@@ -175,7 +177,7 @@ async def upload_and_verify(request):
     dtn = datetime.timestamp(datetime.now())
 
     # add cookie to log user's video
-    queue_obj = QueueObj(app.ctx.current_id,input_filename,dpg_options,dtn)
+    queue_obj = QueueObj(app.ctx.current_id,input_filename,dpg_options,dtn,request.remote_addr)
 
     if(app.ctx.dpg_converting):
         app.ctx.dpg_queue.append(queue_obj)
@@ -257,8 +259,10 @@ async def download_content(request):
             return redirect("/")
 
     download -= 1
-    await aiofiles.os.remove(app.ctx.dpg_downloadable[download].input_filename)
-    response = await file(app.ctx.dpg_downloadable[download].dpg_opts.output, filename=f"download{video_id}.dpg")
+    if app.ctx.dpg_downloadable[download].request_ip == request.remote_addr:
+        response = await file(app.ctx.dpg_downloadable[download].dpg_opts.output, filename=f"download{video_id}.dpg")
+    else:
+        response = redirect("/")
     response.delete_cookie("video_id")
 
     return response
