@@ -21,7 +21,6 @@ Copyright (C) 2025 Deletecat
 import asyncio
 import aiofiles
 import aiofiles.os
-import mmap
 from PIL import Image
 import struct
 import re
@@ -44,7 +43,7 @@ class DPGOpts():
             self.dpg = int(self.dpg)
             self.width = int(self.width)
             self.height = int(self.height)
-        except:
+        except (ValueError,TypeError):
             valid = False
         else:
             if self.fps <= 0 or self.fps > 24:
@@ -94,7 +93,7 @@ async def convert_video(options,file,mpeg_1_temp):
                                                 "-cmp","6","-subcmp","6","-precmp","6", "-dia_size","3","-pre_dia_size","3","-last_pred","3", mpeg_1_temp.name,
                                                 stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.DEVNULL)
 
-    out = await proc.communicate()
+    await proc.wait()
 
 async def convert_audio(options,file,mpeg_2_temp):
     # get audio data
@@ -116,14 +115,14 @@ async def convert_audio(options,file,mpeg_2_temp):
                                                         "-b:a","128k","-mode","stereo","-ac","2",mpeg_2_temp.name,
                                                         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
             # wait for process to complete
-            out = await proc.communicate()
+            await proc.wait()
         else:
             # run mencoder with twolame to get mono, 1 channel audio
             proc = await asyncio.create_subprocess_exec("ffmpeg","-y","-i",file,"-f","data","-map","0:a:0","-codec:a","libtwolame","-ar","32000",
                                                         "-b:a","128k","-mode","mono","-ac","1",mpeg_2_temp.name,
                                                         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
             # wait for process to complete
-            out = await proc.communicate()
+            await proc.wait()
     else:
         # This condition will only be true if the video does not have an audio stream.
         # Having no audio stream will crash Moonshell as it's expecting something that doesn't exist
@@ -133,7 +132,7 @@ async def convert_audio(options,file,mpeg_2_temp):
             proc = await asyncio.create_subprocess_exec("ffmpeg","-y","-f","lavfi","-i","anullsrc","-t",str(seconds),"-map","0:a:0","-codec:a","libtwolame",
                                                         "-b:a","128k","-mode","mono","-ac","1","-ar","32000",mpeg_2_temp.name,
                                                         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
-            out = await proc.communicate()
+            await proc.wait()
         else:
             pass # raise ERROR!
 
@@ -148,7 +147,7 @@ async def calculate_gop(options,file,mpeg_1_temp,gop_temp):
     # get ffprobe data and store it to a file
     async with aiofiles.open(temp_gop_output.name,"w") as writer:
         proc = await asyncio.create_subprocess_exec("ffprobe","-hide_banner","-print_format","csv","-show_frames","-select_streams","v",mpeg_1_temp.name,stdout=writer,stderr=asyncio.subprocess.DEVNULL)
-        out = await proc.communicate()
+        await proc.wait()
 
     async with aiofiles.open(temp_gop_output.name,"r") as reader:
         if options.dpg >= 2:

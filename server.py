@@ -17,7 +17,7 @@ Copyright (C) 2025 Deletecat
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
-from sanic import Sanic, redirect, response, file, html, text
+from sanic import Sanic, redirect, file, html
 from sanic.exceptions import SanicException
 from sanic_ext import render
 from werkzeug.utils import secure_filename
@@ -101,7 +101,7 @@ async def last_ping_cleanup(app):
         await asyncio.sleep(15)
         cur_time = int(datetime.timestamp(datetime.now()))
         remove_converting_task = False
-        if app.ctx.dpg_converting and (cur_time - app.ctx.dpg_converting.last_ping) > 10 and app.ctx.dpg_converting.started == False:
+        if app.ctx.dpg_converting and (cur_time - app.ctx.dpg_converting.last_ping) > 10 and not app.ctx.dpg_converting.started:
             remove_converting_task = True
 
         queue_removal = []
@@ -196,7 +196,7 @@ async def user_queue(request):
     try:
         video_id = int(request.cookies.get("video_id"))
         queue_pos = await check_queue(video_id,True)
-    except:
+    except (ValueError,TypeError):
         return redirect("/")
 
     if app.ctx.dpg_converting is not None and app.ctx.dpg_converting.id == video_id:
@@ -217,10 +217,10 @@ async def user_queue(request):
 async def convert_video(request):
     try:
         video_id = int(request.cookies.get("video_id"))
-    except:
+    except (ValueError,TypeError):
         return redirect("/")
 
-    if app.ctx.dpg_converting == None or app.ctx.dpg_converting.id != video_id:
+    if app.ctx.dpg_converting is None or app.ctx.dpg_converting.id != video_id:
         if await check_queue(video_id,False):
             return redirect("/queue")
         elif await check_downloads(video_id,False):
@@ -246,11 +246,12 @@ async def convert_video(request):
 async def download_content(request):
     try:
         video_id = int(request.cookies.get("video_id"))
-        download = await check_downloads(video_id,True)
-    except:
+    except (ValueError,TypeError):
         return redirect("/")
 
-    if download == False:
+    download = await check_downloads(video_id,True)
+
+    if not download:
         if await check_queue(video_id,False):
             return redirect("/queue")
         elif app.ctx.dpg_converting is not None and app.ctx.dpg_converting.id == video_id:
