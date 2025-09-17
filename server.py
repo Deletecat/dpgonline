@@ -69,6 +69,8 @@ async def init_server(app,loop):
     app.ctx.dpg_downloadable = []
     app.ctx.current_id = 0
 
+    app.ctx.version = "v0.1-alpha1"
+
     app.add_task(download_cleanup)
     app.add_task(last_ping_cleanup)
 
@@ -136,6 +138,10 @@ async def start_encoding(app):
         app.ctx.dpg_converting = None
 
 ### routing and functions
+@app.get("/")
+async def index(request):
+    return await render("index.html",context={"version":app.ctx.version,"queue_length":str(len(app.ctx.dpg_queue))},status=200)
+
 @app.post("/upload")
 async def upload_and_verify(request):
     # get our file from the request
@@ -195,9 +201,10 @@ async def upload_and_verify(request):
 async def user_queue(request):
     try:
         video_id = int(request.cookies.get("video_id"))
-        queue_pos = await check_queue(video_id,True)
     except (ValueError,TypeError):
         return redirect("/")
+
+    queue_pos = await check_queue(video_id,True)
 
     if app.ctx.dpg_converting is not None and app.ctx.dpg_converting.id == video_id:
         return redirect("/convert")
@@ -211,7 +218,7 @@ async def user_queue(request):
         queue_pos = "1 - Next video to be converted"
 
     # send message to user with 5 second refresh
-    return await render("queue.html",context={"queue_pos":str(queue_pos)},status=200)
+    return await render("queue.html",context={"queue_pos":str(queue_pos),"version":app.ctx.version,"queue_length":str(len(app.ctx.dpg_queue))},status=200)
 
 @app.get("/convert")
 async def convert_video(request):
@@ -236,11 +243,7 @@ async def convert_video(request):
     app.ctx.dpg_converting.last_ping = datetime.timestamp(datetime.now())
 
     # send message to user with 5 second refresh
-    return html("""<!DOCTYPE html><html><head><title>dpgonline - converting</title>
-        <meta http-equiv="refresh" content="5"><link rel="icon" type="image/x-icon" href="/favicon.ico">
-        <style>body{font-family: sans-serif;background-color:#C3B1E1;padding:10px;max-width:600px;}</style></head>
-        <body><h1>Your media is being converted.</h1><p>Please keep this page open. Your download will begin soon.</p><hr>
-        <sup>dpgonline - v0.1-alpha1</sup></body></html>""")
+    return await render("convert.html",context={"version":app.ctx.version,"queue_length":str(len(app.ctx.dpg_queue))},status=200)
 
 @app.get("/download")
 async def download_content(request):
@@ -289,5 +292,3 @@ async def check_downloads(id, r_index):
             else:
                 return True
     return False
-
-app.static("/","./static/index.html")
