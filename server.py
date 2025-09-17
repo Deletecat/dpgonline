@@ -19,6 +19,7 @@ Copyright (C) 2025 Deletecat
 """
 from sanic import Sanic, redirect, file, html
 from sanic.exceptions import SanicException
+from sanic.log import logger
 from sanic_ext import render
 from werkzeug.utils import secure_filename
 from datetime import datetime
@@ -74,12 +75,15 @@ async def init_server(app,loop):
     app.add_task(download_cleanup)
     app.add_task(last_ping_cleanup)
 
+    logger.info("Server started successfully!")
+
 ### Background cleanup tasks
 async def download_cleanup(app):
     # every 5 minutes, check to see if downloads have expired
     # if they have, remove them from the download list
     while True:
         await asyncio.sleep(300)
+        logger.info("Starting download cleanup")
         if len(app.ctx.dpg_downloadable):
             cur_time = int(datetime.timestamp(datetime.now()))
             remove_list = []
@@ -88,6 +92,7 @@ async def download_cleanup(app):
             # if they have, remove them.
             for i in range(len(app.ctx.dpg_downloadable)):
                 if app.ctx.dpg_downloadable[i].expiry_time < cur_time:
+                    logger.info(f"Removing object {i} from downloads.")
                     await aiofiles.os.remove(app.ctx.dpg_downloadable[i].dpg_opts.output)   # delete video
                     remove_list.append(i)   # add it to the list of videos to remove
                 else:
@@ -110,13 +115,15 @@ async def last_ping_cleanup(app):
         for i in range(len(app.ctx.dpg_queue)):
             time_diff = cur_time - app.ctx.dpg_queue[i].last_ping
             if time_diff > 10:
-                await aiofiles.os.remove(app.ctx.dpg_queue.input_filename)
+                await aiofiles.os.remove(app.ctx.dpg_queue[i].input_filename)
                 queue_removal.append(i)
 
         for i in range(len(queue_removal)):
+            logger.info(f"Removing object {i} from queue.")
             app.ctx.dpg_queue[i].pop(queue_removal[i])
 
         if(remove_converting_task):
+            logger.info("Removing conversion task...")
             await aiofiles.os.remove(app.ctx.converting.input_filename)
             if len(app.ctx.dpg_queue):
                 app.ctx.dpg_converting = app.ctx.dpg_queue[0]
@@ -126,10 +133,12 @@ async def last_ping_cleanup(app):
 
 ### background encoding tasks
 async def start_encoding(app):
+    logger.info("Starting conversion task")
     await encoder.encode(app.ctx.dpg_converting.dpg_opts, app.ctx.dpg_converting.input_filename)
     app.ctx.dpg_converting.expiry_time = int(datetime.timestamp(datetime.now())) + 1800 # downloads expire every half hour
     app.ctx.dpg_downloadable.append(app.ctx.dpg_converting)
     await aiofiles.os.remove(app.ctx.dpg_converting.input_filename)
+    logger.info("Conversion task complete!")
 
     if len(app.ctx.dpg_queue) > 0:
         app.ctx.dpg_converting = app.ctx.dpg_queue[0]
