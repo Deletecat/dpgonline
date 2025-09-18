@@ -1,0 +1,52 @@
+<!--
+Copyright (C) 2025 Deletecat
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+-->
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>dpgonline</title>
+        <link rel="icon" type="image/x-icon" href="/favicon.ico">
+        <style>
+            body{
+                font-family: sans-serif;
+                background-color:#C3B1E1;
+                padding:10px;
+                max-width: 600px;
+            }
+            .error{
+                border: red 2px solid;
+                padding:3px;
+                background-color: #FFCCCB;
+            }
+            a{
+                color:navy;
+            }
+            a:hover{
+                background-color:black;
+                color:yellow;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>An error has occurred!</h1>
+        <p>If this keeps happening, please report the issue on <a href="https://github.com/Deletecat/dpgonline/issues">GitHub</a>
+        or <a href="https://codeberg.org/Deletecat/dpgonline/issues">Codeberg</a> as it is likely a problem with the backend code.</p>
+        <p class="error">Error message: {{ error_message }}</p>
+        <p><a href="/">Click here to go back to the homepage</a></p>
+        <hr>
+        <sup>dpgonline - {{ queue_length }} video(s) in queue - {{ version }}</sup>
+    </body>
+</html>

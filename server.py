@@ -32,7 +32,7 @@ import encoder
 app = Sanic("dpgonline")
 
 class SilentError(SanicException):
-    message = "Something went wrong,"
+    message = "Possible user error - silent"
     quiet = True
 
 class QueueObj():
@@ -45,6 +45,7 @@ class QueueObj():
         self.last_ping = lp # set once added to queue, used to make sure user is still in the queue/converting
         self.request_ip = ip # limit object to user IP
 
+### server init
 @app.before_server_start
 async def init_server(app,loop):
     # if we don't have an uploads folder, make it
@@ -124,7 +125,7 @@ async def last_ping_cleanup(app):
 
         if(remove_converting_task):
             logger.info("Removing conversion task...")
-            await aiofiles.os.remove(app.ctx.converting.input_filename)
+            await aiofiles.os.remove(app.ctx.dpg_converting.input_filename)
             if len(app.ctx.dpg_queue):
                 app.ctx.dpg_converting = app.ctx.dpg_queue[0]
                 app.ctx.dpg_queue.pop(0)
@@ -140,7 +141,7 @@ async def start_encoding(app):
     await aiofiles.os.remove(app.ctx.dpg_converting.input_filename)
     logger.info("Conversion task complete!")
 
-    if len(app.ctx.dpg_queue) > 0:
+    if len(app.ctx.dpg_queue):
         app.ctx.dpg_converting = app.ctx.dpg_queue[0]
         app.ctx.dpg_queue.pop(0)
     else:
@@ -284,6 +285,11 @@ async def download_content(request):
 async def send_favicon(request):
     return await file("./static/favicon.ico")
 
+@app.exception(Exception)
+async def catch_all_errors(request, exception):
+    return await render("error.html",context={"error_message":str(exception),"version":app.ctx.version,"queue_length":str(len(app.ctx.dpg_queue))})
+
+### extra functions
 async def check_queue(id,r_index):
     for i in range(len(app.ctx.dpg_queue)):
         if app.ctx.dpg_queue[i].id == id:
