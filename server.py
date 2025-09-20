@@ -211,18 +211,23 @@ async def upload_and_verify(request):
 async def user_queue(request):
     try:
         video_id = int(request.cookies.get("video_id"))
+        queue_pos = await check_queue(video_id,True)
     except (ValueError,TypeError):
         return redirect("/")
 
-    queue_pos = await check_queue(video_id,True)
+    if not queue_pos:
+        if app.ctx.dpg_converting is not None and app.ctx.dpg_converting.id == video_id:
+            return redirect("/convert")
+        elif await check_downloads(video_id,False):
+            return redirect("/download")
+        else:
+            return redirect("/")
+    elif app.ctx.dpg_queue[queue_pos-1].request_ip != request.remote_addr:
+        response = redirect("/")
+        response.delete_cookie("video_id")
+        return response
 
-    if app.ctx.dpg_converting is not None and app.ctx.dpg_converting.id == video_id:
-        return redirect("/convert")
-    elif not queue_pos:
-        return redirect("/")
-
-    queue_pos_index = queue_pos - 1
-    app.ctx.dpg_queue[queue_pos_index].last_ping = datetime.timestamp(datetime.now())
+    app.ctx.dpg_queue[queue_pos-1].last_ping = datetime.timestamp(datetime.now())
 
     if queue_pos == 1:
         queue_pos = "1 - Next video to be converted"
@@ -244,6 +249,10 @@ async def convert_video(request):
             return redirect("/download")
         else:
             return redirect("/")
+    elif app.ctx.dpg_converting.request_ip != request.remote_addr:
+        response = redirect("/")
+        response.delete_cookie("video_id")
+        return response
 
     if not app.ctx.dpg_converting.started:
         # encode video
@@ -259,10 +268,9 @@ async def convert_video(request):
 async def download_content(request):
     try:
         video_id = int(request.cookies.get("video_id"))
+        download = await check_downloads(video_id,True)
     except (ValueError,TypeError):
         return redirect("/")
-
-    download = await check_downloads(video_id,True)
 
     if not download:
         if await check_queue(video_id,False):
@@ -271,15 +279,12 @@ async def download_content(request):
             return redirect("/convert")
         else:
             return redirect("/")
-
-    download -= 1
-    if app.ctx.dpg_downloadable[download].request_ip == request.remote_addr:
-        response = await file(app.ctx.dpg_downloadable[download].dpg_opts.output, filename=f"download{video_id}.dpg")
-    else:
+    elif app.ctx.dpg_downloadable[download-1].request_ip != request.remote_addr:
         response = redirect("/")
-    response.delete_cookie("video_id")
+        response.delete_cookie("video_id")
+        return response
 
-    return response
+    return await file(app.ctx.dpg_downloadable[download-1].dpg_opts.output, filename=f"download{video_id}.dpg")
 
 @app.get("/favicon.ico")
 async def send_favicon(request):
