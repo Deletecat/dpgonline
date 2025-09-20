@@ -67,8 +67,12 @@ class EncoderFailureException(Exception):
 
 async def check_if_output_exists(file_name,stage):
     message = f"Encoding failed at {stage} stage. Please open an issue on GitHub or Codeberg." # initial base error
-    file_size = await aiofiles.os.stat(file_name)
-    file_size = int(file_size.st_size)
+    try:
+        file_size = await aiofiles.os.stat(file_name)
+        file_size = int(file_size.st_size)
+    except FileNotFoundError:
+        raise EncoderFailureException(message)
+
     if file_size == 0:
         raise EncoderFailureException(message)
 
@@ -205,6 +209,9 @@ async def create_thumbnail(options,frames,thumb_temp,mpeg_1_temp):
     # wait for the process to complete
     await proc.wait()
 
+    # error checking
+    await check_if_output_exists(orig_thumb_file,"thumbnail (ffmpeg)")
+
     # original dpgconv thumbnail processing code
     im = Image.open(orig_thumb_file)
     width, height = im.size
@@ -239,7 +246,7 @@ async def create_thumbnail(options,frames,thumb_temp,mpeg_1_temp):
         await writer.write(thumb_data)
 
     # error checking
-    await check_if_output_exists(thumb_temp.name,"thumbnail")
+    await check_if_output_exists(thumb_temp.name,"thumbnail (PIL)")
 
 async def write_header(options,tempfiles,frames):
     audiostart=36
