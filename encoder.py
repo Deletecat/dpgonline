@@ -59,6 +59,20 @@ class DPGOpts():
 
         return valid
 
+### encoder exception handling
+class EncoderFailureException(Exception):
+    def __init__(self,message):
+        self.message = message
+        super().__init__(self.message)
+
+async def check_if_output_exists(file_name,stage):
+    message = f"Encoding failed at {stage} stage. Please open an issue on GitHub or Codeberg." # initial base error
+    file_size = await aiofiles.os.stat(file_name)
+    file_size = int(file_size.st_size)
+    if file_size == 0:
+        raise EncoderFailureException(message)
+
+### conversion steps
 async def convert_video(options,file,mpeg_1_temp):
     # get video data using ffprobe
     get_video_data = await asyncio.create_subprocess_exec("ffprobe", "-show_streams", file,
@@ -94,6 +108,9 @@ async def convert_video(options,file,mpeg_1_temp):
                                                 stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.DEVNULL)
 
     await proc.wait()
+
+    # error checking
+    await check_if_output_exists(mpeg_1_temp.name,"video")
 
 async def convert_audio(options,file,mpeg_2_temp):
     # get audio data
@@ -136,6 +153,9 @@ async def convert_audio(options,file,mpeg_2_temp):
         else:
             pass # raise ERROR!
 
+    # error checking
+    await check_if_output_exists(mpeg_2_temp.name,"audio")
+
 async def calculate_gop(options,file,mpeg_1_temp,gop_temp):
     """
     This is derived from dpgv4's gop calculation using ffprobe.
@@ -167,6 +187,10 @@ async def calculate_gop(options,file,mpeg_1_temp,gop_temp):
 
         if options.dpg >= 2:
             await gop.close()
+
+    # error checking
+    await check_if_output_exists(gop_temp.name,"gop")
+
     return frames
 
 async def create_thumbnail(options,frames,thumb_temp,mpeg_1_temp):
@@ -213,6 +237,9 @@ async def create_thumbnail(options,frames,thumb_temp,mpeg_1_temp):
     # write data to file
     async with aiofiles.open(thumb_temp.name,"wb") as writer:
         await writer.write(thumb_data)
+
+    # error checking
+    await check_if_output_exists(thumb_temp.name,"thumbnail")
 
 async def write_header(options,tempfiles,frames):
     audiostart=36
@@ -267,6 +294,9 @@ async def write_header(options,tempfiles,frames):
             # indicate thumbnail in dpg 4
             await f.write(struct.pack("4s", b"THM0"))
 
+    # error checking
+    await check_if_output_exists(tempfiles[0].name,"header")
+
 async def create_full_file(options,tempfiles):
     # open output dpg file
     async with aiofiles.open(options.output,"wb") as writer:
@@ -274,6 +304,9 @@ async def create_full_file(options,tempfiles):
         for data in tempfiles:
             async with aiofiles.open(data.name,"rb") as reader:
                 await writer.write(await reader.read())
+
+    # error checking
+    await check_if_output_exists(options.output,"final")
 
 async def encode(options,file):
     """
