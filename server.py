@@ -75,7 +75,7 @@ async def init_server(app,loop):
     app.ctx.current_id = 0
 
     # app version
-    app.ctx.version = "v0.1-alpha1"
+    app.ctx.version = "v0.1"
 
     # start background tasks
     app.add_task(download_cleanup)
