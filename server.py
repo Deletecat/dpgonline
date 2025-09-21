@@ -19,6 +19,7 @@ Copyright (C) 2025 Deletecat
 """
 from sanic import Sanic, redirect, file
 from sanic.exceptions import SanicException
+from sanic.request import parse_multipart_form
 from sanic.log import logger
 from sanic_ext import render
 from werkzeug.utils import secure_filename
@@ -181,28 +182,41 @@ async def index(request):
     # template rendering to show version num and queue length on the home page
     return await render("index.html",context={"version":app.ctx.version,"queue_length":str(len(app.ctx.dpg_queue))},status=200)
 
-@app.post("/upload")
+@app.post("/upload",stream=True)
 async def upload_and_verify(request):
-    # get our file from the request
-    input_file = request.files.get("file")
+    # get boundary from content type header
+    boundary = request.headers.get("Content-Type").split(" ")[-1].split("=")[-1].encode("utf-8")
+
+    # read in the streamed form data
+    streamed_form = b""
+    while True:
+        body = await request.stream.read()
+        if body is None:
+            break
+        streamed_form += body
+
+    # parse form data
+    form_data, file_data = parse_multipart_form(streamed_form,boundary)
+    file_data = file_data.get("file")
+
     # if there isn't a file, error out
-    if not input_file:
+    if not file_data:
         raise SilentError("File was not uploaded. Please try again.", status_code=400)
 
     # sanitise filename
     date_time = str(datetime.now())
-    input_filename = "./uploads/" + date_time + "." + secure_filename(input_file.name).split(".")[-1]
+    input_filename = "./uploads/" + date_time + "." + secure_filename(file_data.name).split(".")[-1]
 
     # check file mime type to ensure it's a video
-    if not re.match(r"^video/.*",input_file.type):
+    if not re.match(r"^video/.*",file_data.type):
         raise SilentError("Invalid file detected. Please try again.", status_code=400)
-    elif len(input_file.body) > app.config.REQUEST_MAX_SIZE:
+    elif len(file_data.body) > app.config.REQUEST_MAX_SIZE:
         # this should already be triggered by sanic, if not;
         raise SilentError("Your video is too big. Please compress your video before attempting to convert.", status_code=413)
 
     # write our video to file
     async with aiofiles.open(input_filename,"wb") as writer:
-        await writer.write(input_file.body)
+        await writer.write(file_data.body)
 
     # double-check video is indeed a video
     mime_type = magic.from_file(input_filename,mime=True)
@@ -211,7 +225,7 @@ async def upload_and_verify(request):
         raise SilentError("Invalid file detected. Please try again.", status_code=400)
 
     # get dpg options
-    dpg_options = encoder.DPGOpts(request.form.get("fps"),request.form.get("dpg"),request.form.get("width"),request.form.get("height"),request.form.get("aspect"))
+    dpg_options = encoder.DPGOpts(form_data.get("fps"),form_data.get("dpg"),form_data.get("width"),form_data.get("height"),form_data.get("aspect"))
     is_valid = dpg_options.verify_inputs()
     if not is_valid:
         raise SilentError("Invalid input detected. Please try again.", status_code=400)
