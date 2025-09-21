@@ -83,8 +83,9 @@ async def init_server(app,loop):
         app.ctx.file_size = str(max_request_size/1000000) + "MB"
     else:
         app.ctx.file_size = str(max_request_size/1000) + "KB"
+
     # app version
-    app.ctx.version = "v0.1"
+    app.ctx.version = "v0.1.1"
 
     # start background tasks
     app.add_task(download_cleanup)
