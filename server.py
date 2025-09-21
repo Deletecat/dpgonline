@@ -74,6 +74,15 @@ async def init_server(app,loop):
     app.ctx.failed_tasks = []
     app.ctx.current_id = 0
 
+    # get file limit size
+    app.ctx.file_size = ""
+    max_request_size = app.config.REQUEST_MAX_SIZE
+    if not max_request_size % 1000000000:
+        app.ctx.file_size = str(max_request_size/1000000000) + "GB"
+    elif not max_request_size % 1000000:
+        app.ctx.file_size = str(max_request_size/1000000) + "MB"
+    else:
+        app.ctx.file_size = str(max_request_size/1000) + "KB"
     # app version
     app.ctx.version = "v0.1"
 
@@ -178,8 +187,8 @@ async def start_encoding(app):
 ### routing and functions
 @app.get("/")
 async def index(request):
-    # template rendering to show version num and queue length on the home page
-    return await render("index.html",context={"version":app.ctx.version,"queue_length":str(len(app.ctx.dpg_queue))},status=200)
+    # template rendering to show version num and queue length on the home page, as well as max upload size
+    return await render("index.html",context={"version":app.ctx.version,"queue_length":str(len(app.ctx.dpg_queue)),"file_size":app.ctx.file_size},status=200)
 
 @app.post("/upload")
 async def upload_and_verify(request):
